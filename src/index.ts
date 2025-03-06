@@ -2,7 +2,6 @@ import fs from "node:fs";
 import type { AsyncAPIObject } from "asyncapi-types";
 import { compile } from "json-schema-to-typescript";
 import { toPascalCase } from "./utils.ts";
-console.log(process.argv);
 
 const [_, _2, target] = process.argv;
 
@@ -15,11 +14,16 @@ const asyncApi = (await response.json()) as AsyncAPIObject;
 
 console.log(asyncApi);
 
+if (!asyncApi.operations)
+    throw new Error("No operations found in async api spec");
+
+if (!asyncApi.channels) throw new Error("No channels found in async api spec");
+
 const generatedFile: string[] = [];
 const commandMap: Record<string, string> = {};
 const eventMap: Record<string, string> = {};
 
-for (const operation of Object.values(asyncApi.operations!)) {
+for (const operation of Object.values(asyncApi.operations)) {
     console.log(operation);
     if (!("messages" in operation) || !operation.messages) continue;
 
@@ -70,5 +74,39 @@ if (Object.keys(eventMap).length)
         .join("\n")}
     }`,
     );
+
+const serversRaw = asyncApi.servers
+    ? Object.values(asyncApi.servers).filter((server) => "protocol" in server)
+    : [];
+
+const servers = serversRaw.length
+    ? serversRaw.map((x) => x.host)
+    : [new URL(target).host];
+
+// console.log(servers);
+
+const channels = asyncApi.channels
+    ? Object.values(asyncApi.channels).filter(
+          (channel) => "address" in channel && channel.address,
+      )
+    : [];
+
+// console.log(channels);
+
+// TODO: Подумать с точки зрения каналов
+generatedFile.push(
+    "export interface WebsocketServers {",
+    `${servers.map((x) => `"${x}": string`).join("\n")}`,
+    "}",
+);
+
+generatedFile.push(`declare module "@ws-asyncapi/client" {
+        export interface WebsocketAsyncAPIMap {
+            data: {
+                commandMap: CommandMap;
+                eventMap: EventMap;
+            }
+        }
+    }`);
 
 fs.writeFileSync("generated.ts", generatedFile.join("\n"));
