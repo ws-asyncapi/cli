@@ -1,11 +1,12 @@
 {
     "name": "@ws-asyncapi/cli",
     "version": "0.0.1",
-    "homepage": "https://github.com/kravetsone/ws-asyncapi",
-    "readme": "https://github.com/kravetsone/ws-asyncapi",
+    "description": "CLI for ws-asyncapi",
+    "homepage": "https://github.com/ws-asyncapi/cli",
+    "readme": "https://github.com/ws-asyncapi/cli",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/kravetsone/ws-asyncapi.git"
+        "url": "git+https://github.com/ws-asyncapi/cli.git"
     },
     "author": {
         "url": "https://github.com/kravetsone",
