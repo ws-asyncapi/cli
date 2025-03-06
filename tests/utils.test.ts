@@ -118,7 +118,7 @@ describe("resolveRef", () => {
             "#/channels/test/messages/TestReceive",
             mockSchema,
         );
-        // @ts-expect-error
+
         expect(result).toEqual(mockSchema.channels.test.messages.TestReceive);
     });
 
@@ -132,7 +132,7 @@ describe("resolveRef", () => {
             "#/channels/test/messages/TestReceive",
             mockSchema,
         );
-        // @ts-expect-error
+
         expect(result).toEqual(mockSchema.channels.test.messages.TestReceive);
     });
 

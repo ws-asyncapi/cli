@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import type { AsyncAPIObject } from "asyncapi-types";
+import type { AsyncAPIObject, MessageObject } from "asyncapi-types";
 import { compile } from "json-schema-to-typescript";
-import { toPascalCase } from "./utils.ts";
+import { resolveRef, toPascalCase } from "./utils.ts";
 
 const [_, _2, target] = process.argv;
 
@@ -28,10 +28,18 @@ for (const operation of Object.values(asyncApi.operations)) {
     if (!("messages" in operation) || !operation.messages) continue;
 
     for (const message of operation.messages) {
-        if (!("payload" in message)) continue;
+        if (!("$ref" in message)) continue;
 
         console.log(message);
-        const items = message.payload.items;
+        const messageFromRef = resolveRef<MessageObject>(
+            message.$ref,
+            asyncApi,
+        );
+        if (!messageFromRef) {
+            console.error(`Message ${message.$ref} not found`);
+            continue;
+        }
+        const items = messageFromRef.payload.items;
         const typeName = toPascalCase(
             operation.action === "receive"
                 ? `${items[0].const}CommandData`

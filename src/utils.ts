@@ -4,7 +4,10 @@ export function toPascalCase(str: string) {
     return str.replace(/(?:^|_)(\w)/g, (_, char) => char.toUpperCase());
 }
 
-export function resolveRef(ref: string, schema: AsyncAPIObject) {
+export function resolveRef<T>(
+    ref: string,
+    schema: AsyncAPIObject,
+): T | undefined {
     if (!ref.startsWith("#")) return undefined;
 
     const pointer = ref.slice(1);
@@ -19,5 +22,6 @@ export function resolveRef(ref: string, schema: AsyncAPIObject) {
         // @ts-expect-error
         current = current[part];
     }
+    // @ts-expect-error
     return parts.length === 0 ? schema : current;
 }
