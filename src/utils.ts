@@ -1,7 +1,11 @@
-import type { AsyncAPIObject } from "asyncapi-types";
+import type {
+    AsyncAPIObject,
+    ChannelObject,
+    WSBindingObject,
+} from "asyncapi-types";
 
 export function toPascalCase(str: string) {
-    return str.replace(/(?:^|_)(\w)/g, (_, char) => char.toUpperCase());
+    return str.replace(/(?:^|_|-|:)(\w)/g, (_, char) => char.toUpperCase());
 }
 
 export function resolveRef<T>(
@@ -24,4 +28,20 @@ export function resolveRef<T>(
     }
     // @ts-expect-error
     return parts.length === 0 ? schema : current;
+}
+
+export function addressToType(address: string) {
+    return address.replace(/\{.*?\}/g, "${string}");
+}
+
+export function hasInBinding<T extends keyof WSBindingObject>(
+    channel: ChannelObject,
+    key: T,
+) {
+    return (
+        channel.bindings &&
+        "ws" in channel.bindings &&
+        typeof channel.bindings.ws === "object" &&
+        key in channel.bindings.ws
+    );
 }
