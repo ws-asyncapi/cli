@@ -103,7 +103,10 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
 
     const commandMap: Record<string, string> = {};
     const eventMap: Record<string, string> = {};
-    const rpcMap: Record<string, { input: string; output: string }> = {};
+    const rpcMap: Record<
+        string,
+        { input: string; output: string; errors: Record<string, string> }
+    > = {};
 
     // Resolves a `[Type.Literal(name), schema]` tuple message ref, emits its
     // TypeScript interface under `typeName`, and returns `{ name, typeName }`.
@@ -163,10 +166,29 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
             const output = await compileMessageRef(repRef.$ref, (name) =>
                 toPascalCase(`${name}Output`),
             );
+
+            // declared, typed errors (code -> data type)
+            const errors: Record<string, string> = {};
+            const errorIndex = (
+                operation as {
+                    "x-ws-asyncapi-errors"?: Record<string, { $ref: string }>;
+                }
+            )["x-ws-asyncapi-errors"];
+            if (input && errorIndex) {
+                for (const [code, ref] of Object.entries(errorIndex)) {
+                    if (!ref || !("$ref" in ref)) continue;
+                    const compiled = await compileMessageRef(ref.$ref, () =>
+                        toPascalCase(`${input.name}_${code}_Error`),
+                    );
+                    if (compiled) errors[code] = compiled.typeName;
+                }
+            }
+
             if (input && output) {
                 rpcMap[input.name] = {
                     input: input.typeName,
                     output: output.typeName,
+                    errors,
                 };
             }
             continue;
@@ -212,10 +234,12 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
     generatedFile.push(
         `export interface RpcMap {
         ${Object.entries(rpcMap)
-            .map(
-                ([key, value]) =>
-                    `"${key}": { input: ${value.input}; output: ${value.output} }`,
-            )
+            .map(([key, value]) => {
+                const errs = Object.entries(value.errors)
+                    .map(([code, type]) => `"${code}": ${type}`)
+                    .join("; ");
+                return `"${key}": { input: ${value.input}; output: ${value.output}; errors: { ${errs} } }`;
+            })
             .join("\n")}
         }`,
     );
