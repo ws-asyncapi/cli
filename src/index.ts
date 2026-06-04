@@ -103,48 +103,91 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
 
     const commandMap: Record<string, string> = {};
     const eventMap: Record<string, string> = {};
+    const rpcMap: Record<string, { input: string; output: string }> = {};
+
+    // Resolves a `[Type.Literal(name), schema]` tuple message ref, emits its
+    // TypeScript interface under `typeName`, and returns `{ name, typeName }`.
+    async function compileMessageRef(
+        ref: string,
+        typeNameFor: (name: string) => string,
+    ): Promise<{ name: string; typeName: string } | null> {
+        const messageFromRef = resolveRef<MessageObject>(ref, asyncApi);
+        if (!messageFromRef) {
+            console.error(`Message ${ref} not found`);
+            return null;
+        }
+        const [type, schema] = messageFromRef.payload.items;
+        const name = type.const as string;
+        const typeName = typeNameFor(name);
+
+        const schemaInterface =
+            "not" in schema && !Object.keys(schema.not).length
+                ? `export type ${typeName} = never;`
+                : await compile(
+                      { additionalProperties: false, ...schema },
+                      typeName,
+                      {
+                          bannerComment: "",
+                          additionalProperties: false,
+                      },
+                  );
+        generatedFile.push(schemaInterface);
+        return { name, typeName };
+    }
 
     for (const operation of operations) {
-        console.log(operation);
         if (!("messages" in operation) || !operation.messages) continue;
+
+        // RPC: action "receive" with a `reply`. messages[0] = request,
+        // reply.messages[0] = reply.
+        const isRpc =
+            "x-ws-asyncapi-rpc" in operation ||
+            (!!operation.reply && "messages" in operation.reply);
+
+        if (isRpc) {
+            const reqRef = operation.messages[0];
+            const reply = operation.reply;
+            const repRef =
+                reply && "messages" in reply ? reply.messages?.[0] : undefined;
+            if (
+                !reqRef ||
+                !("$ref" in reqRef) ||
+                !repRef ||
+                !("$ref" in repRef)
+            )
+                continue;
+
+            const input = await compileMessageRef(reqRef.$ref, (name) =>
+                toPascalCase(`${name}Input`),
+            );
+            const output = await compileMessageRef(repRef.$ref, (name) =>
+                toPascalCase(`${name}Output`),
+            );
+            if (input && output) {
+                rpcMap[input.name] = {
+                    input: input.typeName,
+                    output: output.typeName,
+                };
+            }
+            continue;
+        }
 
         for (const message of operation.messages) {
             if (!("$ref" in message)) continue;
 
-            console.log(message);
-            const messageFromRef = resolveRef<MessageObject>(
-                message.$ref,
-                asyncApi,
+            const result = await compileMessageRef(message.$ref, (name) =>
+                toPascalCase(
+                    operation.action === "receive"
+                        ? `${name}CommandData`
+                        : `${name}EventData`,
+                ),
             );
-            if (!messageFromRef) {
-                console.error(`Message ${message.$ref} not found`);
-                continue;
-            }
-            const [type, schema] = messageFromRef.payload.items;
-            const typeName = toPascalCase(
-                operation.action === "receive"
-                    ? `${type.const}CommandData`
-                    : `${type.const}EventData`,
-            );
-
-            const schemaInterface =
-                "not" in schema && !Object.keys(schema.not).length
-                    ? `export type ${typeName} = never;`
-                    : await compile(
-                          { additionalProperties: false, ...schema },
-                          typeName,
-                          {
-                              bannerComment: "",
-                              additionalProperties: false,
-                          },
-                      );
-            console.log(schema, schemaInterface);
-            generatedFile.push(schemaInterface);
+            if (!result) continue;
 
             if (operation.action === "receive") {
-                commandMap[type.const] = typeName;
+                commandMap[result.name] = result.typeName;
             } else {
-                eventMap[type.const] = typeName;
+                eventMap[result.name] = result.typeName;
             }
         }
     }
@@ -162,6 +205,17 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
         `export interface EventMap {
         ${Object.entries(eventMap)
             .map(([key, value]) => `"${key}": ${value}`)
+            .join("\n")}
+        }`,
+    );
+
+    generatedFile.push(
+        `export interface RpcMap {
+        ${Object.entries(rpcMap)
+            .map(
+                ([key, value]) =>
+                    `"${key}": { input: ${value.input}; output: ${value.output} }`,
+            )
             .join("\n")}
         }`,
     );
@@ -217,6 +271,7 @@ generatedFile.push(`declare module "@ws-asyncapi/client" {
                     ${hasInBinding(channel, "headers") ? `headers: ${toPascalCase(`${channel.title}Channel`)}.HeadersType` : ""}
                     commandMap:  ${toPascalCase(`${channel.title}Channel`)}.CommandMap;
                     eventMap: ${toPascalCase(`${channel.title}Channel`)}.EventMap;
+                    rpcMap: ${toPascalCase(`${channel.title}Channel`)}.RpcMap;
                 }`,
                     )
                     .join("\n")}
