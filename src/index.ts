@@ -107,6 +107,7 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
         string,
         { input: string; output: string; errors: Record<string, string> }
     > = {};
+    const serverRpcMap: Record<string, { input: string; output: string }> = {};
 
     // Resolves a `[Type.Literal(name), schema]` tuple message ref, emits its
     // TypeScript interface under `typeName`, and returns `{ name, typeName }`.
@@ -141,8 +142,37 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
     for (const operation of operations) {
         if (!("messages" in operation) || !operation.messages) continue;
 
-        // RPC: action "receive" with a `reply`. messages[0] = request,
-        // reply.messages[0] = reply.
+        // Server→client RPC: action "send" with a `reply`. messages[0] =
+        // request (server→client), reply.messages[0] = reply (client→server).
+        const isServerRpc = "x-ws-asyncapi-server-rpc" in operation;
+        if (isServerRpc) {
+            const reqRef = operation.messages[0];
+            const reply = operation.reply;
+            const repRef =
+                reply && "messages" in reply ? reply.messages?.[0] : undefined;
+            if (
+                !reqRef ||
+                !("$ref" in reqRef) ||
+                !repRef ||
+                !("$ref" in repRef)
+            )
+                continue;
+            const input = await compileMessageRef(reqRef.$ref, (name) =>
+                toPascalCase(`${name}Input`),
+            );
+            const output = await compileMessageRef(repRef.$ref, (name) =>
+                toPascalCase(`${name}Output`),
+            );
+            if (input && output)
+                serverRpcMap[input.name] = {
+                    input: input.typeName,
+                    output: output.typeName,
+                };
+            continue;
+        }
+
+        // Client→server RPC: action "receive" with a `reply`. messages[0] =
+        // request, reply.messages[0] = reply.
         const isRpc =
             "x-ws-asyncapi-rpc" in operation ||
             (!!operation.reply && "messages" in operation.reply);
@@ -244,6 +274,17 @@ for (const [channelRef, operations] of Object.entries(channelsGroupedByRef)) {
         }`,
     );
 
+    generatedFile.push(
+        `export interface ServerRpcMap {
+        ${Object.entries(serverRpcMap)
+            .map(
+                ([key, value]) =>
+                    `"${key}": { input: ${value.input}; output: ${value.output} }`,
+            )
+            .join("\n")}
+        }`,
+    );
+
     generatedFile.push("}");
 }
 
@@ -296,6 +337,7 @@ generatedFile.push(`declare module "@ws-asyncapi/client" {
                     commandMap:  ${toPascalCase(`${channel.title}Channel`)}.CommandMap;
                     eventMap: ${toPascalCase(`${channel.title}Channel`)}.EventMap;
                     rpcMap: ${toPascalCase(`${channel.title}Channel`)}.RpcMap;
+                    serverRpcMap: ${toPascalCase(`${channel.title}Channel`)}.ServerRpcMap;
                 }`,
                     )
                     .join("\n")}
