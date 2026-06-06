@@ -1,6 +1,6 @@
 {
     "name": "@ws-asyncapi/cli",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "CLI for ws-asyncapi",
     "homepage": "https://github.com/ws-asyncapi/cli",
     "readme": "https://github.com/ws-asyncapi/cli",
@@ -24,7 +24,9 @@
         "prepublishOnly": "bunx pkgroll",
         "t": "bunx @ws-asyncapi/cli http://localhost:3000/asyncapi.json && bunx @biomejs/biome check generated.ts --write"
     },
-    "files": ["dist"],
+    "files": [
+        "dist"
+    ],
     "license": "MIT",
     "dependencies": {
         "asyncapi-types": "3.0.2",
